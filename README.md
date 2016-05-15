@@ -25,7 +25,7 @@ Command                   | Description
 
 ### About
 
-This is just experimental plugin that I've made for personal needs. Just wanted to share it and maybe someone also find it useful.
+This is just experimental script that I've made for personal needs. Just wanted to share it and maybe someone also find it useful.
 
 
 ### Licence
