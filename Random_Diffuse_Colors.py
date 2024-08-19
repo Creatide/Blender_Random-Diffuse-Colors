@@ -5,67 +5,101 @@
 # Author:      Sakari Niittymaa
 #
 # Created:     27.4.2016
+# Updated:     19.8.2024 (Updated to work with blender 4.2)
 # Copyright:   Copyright(c) 2016 Sakari Niittymaa
 #              http://www.niittymaa.com
 #
 # Licence:     The MIT License (MIT)
 #---------------------------------------------------------------
 
-import bpy,random
+import bpy
+import random
+import bpy.app
 
-# Change if needed
-useNodes = True
-createNewMaterialSlot = False
-replaceFirstMaterial = False
+# Configuration options
+useNodes = True  # Whether to use node-based materials
+createNewMaterialSlot = False  # Whether to create a new material slot
+replaceFirstMaterial = False  # Whether to replace the first material in the slot
 
-# Loop all selected objects
+# Version checking for backward compatibility
+blender_version = bpy.app.version
+
+# Function to handle material assignment
+def assign_material(ob, mat, mat_len):
+    if blender_version >= (2, 8, 0):
+        # Blender 2.8 and newer
+        ob.active_material_index = 0
+        if mat_len > 0 and not createNewMaterialSlot:
+            ob.data.materials[0] = mat
+        else:
+            ob.data.materials.append(mat)
+            ob.active_material_index = len(ob.data.materials) - 1
+    else:
+        # Blender 2.7 and older
+        ob.active_material_index = 0
+        if mat_len > 0 and not createNewMaterialSlot:
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.object.material_slot_assign()
+            bpy.ops.object.mode_set(mode='OBJECT')
+            ob.data.materials[0] = mat
+        else:
+            ob.data.materials.append(mat)
+            ob.active_material_index = len(ob.data.materials) - 1
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.object.material_slot_assign()
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+# Loop through all selected objects
 for ob in bpy.context.selected_objects:
+
+    # Set the object as active
+    if blender_version >= (2, 8, 0):
+        bpy.context.view_layer.objects.active = ob
+    else:
+        bpy.context.scene.objects.active = ob
     
-    # Activate current object to assign material
-    bpy.context.scene.objects.active = ob
-    
-    # Get object material length
-    matLen = len(ob.data.materials)
+    # Get the number of materials the object has
+    mat_len = len(ob.data.materials)
     
     # Generate random color values
-    # Tip: You can range channel values
-    r = random.randint( 0, 255)
-    g = random.randint( 0, 255)
-    b = random.randint( 0, 255)
+    r = random.random()
+    g = random.random()
+    b = random.random()
     
-    # Color name from HEX value
-    # Note: Value based to no gamma corrected value. 
-    # See right value to setup "Color Management" > "Display Device" > "None"
-    hexName = '#%02x%02x%02x' % (r,g,b)   
+    # Create a color name using HEX format
+    hex_name = '#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
     
-    # Replace material in first material slot
-    if matLen and replaceFirstMaterial and not createNewMaterialSlot:
+    # Handle material assignment based on user settings
+    if mat_len > 0 and replaceFirstMaterial and not createNewMaterialSlot:
+        # Replace the material in the first slot
         ob.active_material_index = 0
         mat = ob.active_material
-        mat.name = hexName
-    
-    # Create new material and name it by HEX code
+        mat.name = hex_name
     else:
-        mat = bpy.data.materials.new(name=hexName)
-    
-    # Set diffuse to material
-    mat.diffuse_color = (r/255,g/255,b/255)
-    
-    # Assign material to exist material in object
-    if matLen and createNewMaterialSlot != True:
-        ob.active_material_index = 0
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.object.material_slot_assign()
-        bpy.ops.object.mode_set(mode='OBJECT')
-        ob.data.materials[0] = mat
-    
-    # Append to new material slot and assign to object
+        # Create a new material with the HEX name
+        mat = bpy.data.materials.new(name=hex_name)
+
+    # Set the material to use nodes if required
+    if useNodes:
+        if blender_version >= (2, 8, 0):
+            # Blender 2.8 and newer
+            mat.use_nodes = True
+            bsdf = mat.node_tree.nodes.get("Principled BSDF")
+            if bsdf is None:
+                bsdf = mat.node_tree.nodes.new(type="ShaderNodeBsdfPrincipled")
+                mat.node_tree.links.new(bsdf.outputs['BSDF'], mat.node_tree.nodes['Material Output'].inputs['Surface'])
+            bsdf.inputs['Base Color'].default_value = (r, g, b, 1)  # RGBA
+        else:
+            # Blender 2.7 and older
+            mat.use_nodes = True
+            mat.diffuse_color = (r, g, b)  # RGB only in older versions
     else:
-        ob.data.materials.append(mat)
-        ob.active_material_index = matLen   
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.object.material_slot_assign()
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-    # Enable 'Use nodes' for material
-    mat.use_nodes = useNodes
+        if blender_version >= (2, 8, 0):
+            # For materials without nodes in newer versions
+            mat.diffuse_color = (r, g, b, 1)  # RGBA
+        else:
+            # For materials without nodes in older versions
+            mat.diffuse_color = (r, g, b)  # RGB
+
+    # Assign material using the correct method for the Blender version
+    assign_material(ob, mat, mat_len)
